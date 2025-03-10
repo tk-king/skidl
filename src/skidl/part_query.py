@@ -110,7 +110,7 @@ def search_parts_iter(terms, tool=None):
 
 
 @export_to_all
-def search_parts(terms, tool=None):
+def search_parts(terms, tool=None, show=False):
     """
     Print a list of parts with the regex terms within their name, alias, description or keywords.
     """
@@ -123,13 +123,17 @@ def search_parts(terms, tool=None):
             parts.add(part[1:4])
     print(" " * 79, end="\r")
 
+    res = []
     # Print each part name sorted by the library where it was found.
     for lib_file, part, part_name in sorted(list(parts), key=lambda p: p[0]):
-        print(
-            "{}: {} ({})".format(
-                lib_file, part_name, getattr(part, "description", "???")
+        res.append({"lib_file": lib_file, "part": part, "part_name": part_name})
+        if show:
+            print(
+                "{}: {} ({})".format(
+                    lib_file, part_name, getattr(part, "description", "???")
+                )
             )
-        )
+    return res
 
 
 @export_to_all
@@ -356,7 +360,7 @@ def search_footprints_iter(terms, tool=None):
 
 
 @export_to_all
-def search_footprints(terms, tool=None):
+def search_footprints(terms, tool=None, show=False):
     """
     Print a list of footprints with the regex term within their description/tags.
     """
@@ -369,6 +373,7 @@ def search_footprints(terms, tool=None):
             footprints.append(fp[1:4])
     print(" " * 79, end="\r")
 
+    res = []
     # Print each module name sorted by the library where it was found.
     for lib_file, module_text, module_name in sorted(
         footprints, key=lambda f: (f[0], f[2])
@@ -384,8 +389,10 @@ def search_footprints(terms, tool=None):
                 tags = line.split("(tags ")[1].rsplit(")", 1)[0]
             except IndexError:
                 pass
-        print("{}: {} ({} - {})".format(lib_file, module_name, descr, tags))
-
+        res.append({"lib_file": lib_file, "module_text": module_text, "module_name": module_name})
+        if show:
+            print("{}: {} ({} - {})".format(lib_file, module_name, descr, tags))
+    return res
 
 @export_to_all
 def show_footprint(lib, module_name, tool=None):
