@@ -643,6 +643,17 @@ class Pin(SkidlBaseObject):
         names = ",".join(names)
         func = pin_info[self.func]["function"]
         return num, names, func
+    
+    def get_pin_info_json(self):
+        num = getattr(self, "num", "???")
+        names = [getattr(self, "name", "???")]
+        names.extend(self.aliases)
+        function = pin_info[self.func]["function"]
+        return {
+            "num": num,
+            "names": names,
+            "function": function
+        }
 
     def export(self):
         """Return a string to recreate a Pin object."""

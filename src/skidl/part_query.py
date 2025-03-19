@@ -9,6 +9,7 @@ Functions for finding/displaying parts and footprints.
 import os
 import os.path
 import re
+from tqdm import tqdm
 
 from .logger import active_logger
 from .utilities import export_to_all, fullmatch, rmv_quotes, to_list
@@ -108,6 +109,151 @@ def search_parts_iter(terms, tool=None):
             for alias in list(part.aliases):
                 yield "PART", lib_file, part, alias
 
+@export_to_all
+def get_all_parts(tool=None, include_aliases=False, test=False):
+    """Return a list of all (lib_dir, lib_file, part, alias) tuples from all libraries.
+    
+    Args:
+        tool (str, optional): The EDA tool to use (e.g., 'kicad', 'spice').
+        include_aliases (bool, optional): If True, includes part aliases separately. 
+                                          If False, only the main part name is returned.
+
+    Returns:
+        list: A list of tuples (lib_dir, lib_file, part, alias).
+    """
+
+    import skidl
+    import skidl.tools
+    import os
+
+    from .schlib import SchLib
+
+    tool = tool or skidl.config.tool
+
+    def mk_list(l):
+        """Make a list out of whatever is given."""
+        if isinstance(l, (list, tuple)):
+            return l
+        if not l:
+            return []
+        return [l]
+
+    # Gather all the library files from search paths.
+    lib_files = []
+    lib_suffixes = tuple(to_list(skidl.tools.lib_suffixes[tool]))
+    for lib_dir in skidl.lib_search_paths[tool]:
+        try:
+            files = os.listdir(lib_dir)
+        except (FileNotFoundError, OSError):
+            active_logger.warning(f"Could not open directory '{lib_dir}'")
+            files = []
+
+        files = [(lib_dir, l) for l in files if l.endswith(lib_suffixes)]
+        lib_files.extend(files)
+
+    all_parts = []
+
+    # Load parts from all libraries
+    for lib_dir, lib_file in tqdm(lib_files):
+        lib = SchLib(os.path.join(lib_dir, lib_file), tool=tool)  # Open the library file.
+
+        # Get all parts without filtering
+        for part in mk_list(lib.get_parts(use_backup_lib=False)):
+            part.parse(partial_parse=True)
+
+            # Handle aliases based on flag
+            if include_aliases:
+                for alias in list(part.aliases):
+                    all_parts.append((lib_dir, lib_file, part, alias))
+            else:
+                all_parts.append((lib_dir, lib_file, part, None))  # Only main part name
+        if test:
+            break
+    return all_parts
+
+
+# @export_to_all
+# def get_all_footprints(tool=None):
+#     """Return a list of (lib, footprint) sequences that match a regex term."""
+
+#     import skidl
+
+#     tool = tool or skidl.config.tool
+#     footprints = []
+#     # If the cache isn't valid, then make it valid by gathering all the
+#     # footprint files from all the directories in the search paths.
+#     if not footprint_cache.valid:
+#         footprint_cache.clear()
+#         for path in skidl.footprint_search_paths[tool]:
+#             footprint_cache.load(path)
+
+#     # Get the number of footprint libraries to be searched..
+#     num_fp_libs = len(footprint_cache)
+
+#     # Now search through the libraries for footprints that match the search terms.
+#     for idx, fp_lib in enumerate(footprint_cache):
+
+#         # Get path to library directory and dict of footprint modules.
+#         path = footprint_cache[fp_lib]["path"]
+#         modules = footprint_cache[fp_lib]["modules"]
+
+#         # Search each module in the library.
+#         for module_name in modules:
+
+#             # If the cache isn't valid, then read each footprint file and store
+#             # it's contents in the cache.
+#             if not footprint_cache.valid:
+#                 file = os.path.join(path, module_name + ".kicad_mod")
+#                 with open(file, "r") as fp:
+#                     try:
+#                         # Remove any linefeeds that would interfere with fullmatch() later on.
+#                         modules[module_name] = [l.rstrip() for l in fp.readlines()]
+#                     except UnicodeDecodeError:
+#                         try:
+#                             modules[module_name] = [
+#                                 l.decode("utf-8").rstrip() for l in fp.readlines()
+#                             ]
+#                         except AttributeError:
+#                             modules[module_name] = ""
+
+#             # Get the contents of the footprint file from the cache.
+#             module_text = tuple(modules[module_name])
+#             footprints.append((fp_lib, module_text, module_name))
+#     return footprints
+
+
+@export_to_all
+def get_all_footprints(tool=None, show=False):
+    footprints = []
+    for fp in search_footprints_iter("", tool, get_all=True):
+        if fp[0] == "LIB":
+            pass
+            # print(" " * 79, "\rSearching {} ...".format(fp[1]), sep="", end="\r")
+        elif fp[0] == "MODULE":
+            footprints.append(fp[1:4])
+    print(" " * 79, end="\r")
+
+    res = []
+    # Print each module name sorted by the library where it was found.
+    for lib_file, module_text, module_name in sorted(
+        footprints, key=lambda f: (f[0], f[2])
+    ):
+        descr = "???"
+        tags = "???"
+        for line in module_text:
+            try:
+                descr = line.split("(descr ")[1].rsplit(")", 1)[0]
+            except IndexError:
+                pass
+            try:
+                tags = line.split("(tags ")[1].rsplit(")", 1)[0]
+            except IndexError:
+                pass
+        res.append({"lib_file": lib_file, "module_text": module_text, "module_name": module_name})
+        if show:
+            print("{}: {} ({} - {})".format(lib_file, module_name, descr, tags))
+    return res
+
 
 @export_to_all
 def search_parts(terms, tool=None, show=False):
@@ -155,11 +301,7 @@ def show_part(lib, part_name, tool=None):
     from .part import TEMPLATE, Part
 
     tool = tool or skidl.config.tool
-
-    try:
-        return Part(lib, re.escape(part_name), tool=tool, dest=TEMPLATE)
-    except Exception:
-        return None
+    return Part(lib, re.escape(part_name), tool=tool, dest=TEMPLATE)
 
 
 class FootprintCache(dict):
@@ -277,7 +419,7 @@ footprint_cache = FootprintCache()
 
 
 @export_to_all
-def search_footprints_iter(terms, tool=None):
+def search_footprints_iter(terms, tool=None, get_all=False):
     """Return a list of (lib, footprint) sequences that match a regex term."""
 
     import skidl
@@ -348,12 +490,14 @@ def search_footprints_iter(terms, tool=None):
             for line in module_text:
                 if "(descr " in line or "(tags " in line:
                     search_text = "\n".join([search_text, line])
-
-            # Search the string for a match with the search terms.
-            if fullmatch(
-                terms, search_text, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL
-            ):
+            if get_all:
                 yield "MODULE", fp_lib, module_text, module_name
+            else:
+                # Search the string for a match with the search terms.
+                if fullmatch(
+                    terms, search_text, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL
+                ):
+                    yield "MODULE", fp_lib, module_text, module_name
 
     # At the end, all modules have been scanned and the footprint cache is valid.
     footprint_cache.valid = True
@@ -414,6 +558,8 @@ def show_footprint(lib, module_name, tool=None):
 
     os.environ["KISYSMOD"] = os.pathsep.join(skidl.footprint_search_paths[tool])
     return pym.Module.from_library(lib, module_name)
+
+
 
 
 # Define some shortcuts.

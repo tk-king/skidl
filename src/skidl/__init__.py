@@ -39,6 +39,8 @@ from .part_query import (
     show,
     show_footprint,
     show_part,
+    get_all_parts,
+    get_all_footprints,
 )
 from .pin import Pin
 from .schlib import SchLib, load_backup_lib

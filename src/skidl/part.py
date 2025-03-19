@@ -14,6 +14,7 @@ from random import randint
 from .erc import dflt_part_erc
 from .logger import active_logger
 from .skidlbaseobj import SkidlBaseObject
+from .pin import Pin
 from .utilities import (
     add_unique_attr,
     expand_indices,
@@ -166,8 +167,13 @@ class Part(SkidlBaseObject):
         self.tool = tool  # Initial type of part (SKIDL, KICAD, etc.)
         self.circuit = None  # Part starts off unassociated with any circuit.
         self.match_pin_regex = False  # Don't allow regex matches of pin names.
+        self.props = {}
+        self.ki_fp_filters = None
+        self.fplist = []
+        self.footprint = None
+        self.datasheet = None
+        self.description = None
 
-        # Create a Part from a library entry.
         if lib:
             # If the lib argument is a string, then create a library using the
             # string as the library file name.
@@ -199,7 +205,6 @@ class Part(SkidlBaseObject):
 
             # Copy part units so all the pin and part references stay valid.
             self.copy_units(part)
-
         # Otherwise, create a Part from a part definition. If the part is
         # destined for a library, then just get its name. If it's going into
         # a netlist, then parse the entire part definition.
@@ -295,6 +300,14 @@ class Part(SkidlBaseObject):
             desc=self.description,
             pins="\n    ".join([p.__str__() for p in self.pins]),
         )
+    
+    def get_json(self):
+        return {
+            "name": self.name,
+            "aliases": self.aliases,
+            "description": self.description,
+            "pins": [p.get_json() for p in self.pins]
+        }
 
     __repr__ = __str__
 
@@ -1079,6 +1092,7 @@ class Part(SkidlBaseObject):
             "keywords",
             "description",
             "datasheet",
+            "ki_fp_filters",
         ]
 
         # Add any other additional part attributes

@@ -456,11 +456,16 @@ def parse_lib_part(part, partial_parse):
         for prop in part.part_defn
         if prop[0].value().lower() == "property"
     }
+    part.props = props
     part.ref_prefix = props["reference"][2]
     part.value = props["value"][2]
     part.fplist.append(props["footprint"][2])
+    part.ki_fp_filters = props.get("ki_fp_filters", None)
+    if part.ki_fp_filters:
+        part.ki_fp_filters = part.ki_fp_filters[2]
     part.datasheet = props["datasheet"][2]
     part.draw_cmds[1].extend([props["reference"], props["value"]])
+    part.description = props["description"][2]
 
     # Construct the rest of the part attribute space, avoid part attributes that are already defined.
     part_dict = {
